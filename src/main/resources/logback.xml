@@ -1,0 +1,46 @@
+<configuration debug="false">
+
+    <!-- without this hook, async logs won't make it out when the system is shut down. -->
+    <shutdownHook class="ch.qos.logback.core.hook.DelayingShutdownHook"/>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%date{HH:mm:ss} %-5level %logger [%X{akkaSource}] - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="FILE" class="ch.qos.logback.core.FileAppender">
+        <file>/tmp/akka-rapid-benchmark.log</file>
+
+        <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
+            <layout class="ch.qos.logback.contrib.json.classic.JsonLayout">
+                <timestampFormat>yyyy-MM-dd'T'HH:mm:ss.SSSX</timestampFormat>
+                <timestampFormatTimezoneId>Etc/UTC</timestampFormatTimezoneId>
+
+                <jsonFormatter class="ch.qos.logback.contrib.jackson.JacksonJsonFormatter">
+                    <prettyPrint>false</prettyPrint>
+                </jsonFormatter>
+                <appendLineSeparator>true</appendLineSeparator>
+           </layout>
+        </encoder>
+
+    </appender>
+
+
+    <appender name="ASYNCFILE" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>8192</queueSize>
+        <neverBlock>false</neverBlock>
+        <appender-ref ref="FILE"/>
+    </appender>
+
+
+    <logger name="com.vrg.rapid" level="INFO" />
+    <logger name="akka" level="WARN" />
+    <logger name="io.bernhardt.akka.rapid" level="DEBUG" />
+    <logger name="main" level="DEBUG" />
+
+    <root level="DEBUG">
+        <appender-ref ref="ASYNCFILE" />
+    </root>
+
+</configuration>

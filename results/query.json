@@ -1,0 +1,51 @@
+{
+  "version": true,
+  "size": 10000,
+  "sort": [
+    {
+      "@timestamp": {
+        "order": "desc",
+        "unmapped_type": "boolean"
+      }
+    }
+  ],
+  "aggs": {
+    "2": {
+      "date_histogram": {
+        "field": "@timestamp",
+        "fixed_interval": "1s",
+        "time_zone": "Europe/Vienna",
+        "min_doc_count": 1
+      }
+    }
+  },
+  "_source": {
+    "includes": ["memberCount", "timestamp"]
+  },
+  "query": {
+    "bool": {
+      "must": [],
+      "filter": [
+        {
+          "match_all": {}
+        },
+        {
+          "match_phrase": {
+            "logger": "io.bernhardt.akka.rapid.MembershipRecorder"
+          }
+        },
+        {
+          "range": {
+            "@timestamp": {
+              "gte": "2020-03-10T16:24:00.000Z",
+              "lte": "2020-03-10T16:25:00.000Z",
+              "format": "strict_date_optional_time"
+            }
+          }
+        }
+      ],
+      "should": [],
+      "must_not": []
+    }
+  }
+}

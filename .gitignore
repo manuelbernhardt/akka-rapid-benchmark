@@ -1,0 +1,6 @@
+deploy.sh
+target/
+.idea
+*tfstate*
+.terraform
+filebeat.yml

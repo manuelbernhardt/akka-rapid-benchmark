@@ -1,0 +1,4 @@
+check process akka with pidfile /tmp/akka.pid
+  every 2 cycles
+  start program = "/opt/akka/bin/akka-rapid-benchmark -J-Xms8g -J-Xmx8g"
+  stop program = "/bin/sh -c 'kill -s SIGTERM `cat /tmp/akka.pid`'"
