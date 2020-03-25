@@ -34,7 +34,7 @@
     </appender>
 
 
-    <logger name="com.vrg.rapid" level="INFO" />
+    <logger name="com.vrg.rapid" level="WARN" />
     <logger name="akka" level="WARN" />
     <logger name="io.bernhardt.akka.rapid" level="DEBUG" />
     <logger name="main" level="DEBUG" />

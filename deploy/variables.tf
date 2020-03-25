@@ -54,6 +54,11 @@ variable "members" {
     description = "The number of Akka nodes the actor system expects to work with"
 }
 
+variable "broadcasters" {
+  default     = "0"
+  description = "The number of Akka nodes that serve as Rapid broadcasters"
+}
+
 variable "elastic_cloudid" {
     default     = ""
     description = "Elastic cloud id"

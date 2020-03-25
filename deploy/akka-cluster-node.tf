@@ -143,8 +143,30 @@ resource "aws_instance" "akka_seed_node" {
 
 }
 
+resource "aws_instance" "akka-broadcasters" {
+    count = var.broadcasters
+    ami = aws_ami_from_instance.akka-template-ami.id
+    instance_type = "c4.2xlarge"
+    vpc_security_group_ids = [var.aws_security_group]
+    key_name = var.key_name
+    availability_zone = var.availability_zone
+    subnet_id = var.subnet_id_1
+
+    tags = {
+        Name = "${var.tag_name}-broadcaster-${count.index}"
+    }
+
+    user_data = base64encode("${aws_instance.akka_seed_node.private_dns}|${var.members}|")
+
+    connection {
+        host        = self.public_ip
+        user        = lookup(var.user, var.platform)
+        private_key = file(var.key_path)
+    }
+}
+
 resource "aws_instance" "akka-1" {
-    count = (var.servers - 1) / 3
+    count = (var.servers - var.broadcasters - 1) / 3
     ami = aws_ami_from_instance.akka-template-ami.id
     instance_type = var.instance_type
     vpc_security_group_ids = [var.aws_security_group]
@@ -156,7 +178,7 @@ resource "aws_instance" "akka-1" {
         Name = "${var.tag_name}-${count.index}"
     }
 
-    user_data = base64encode("${aws_instance.akka_seed_node.private_dns}|${var.members}")
+    user_data = base64encode("${aws_instance.akka_seed_node.private_dns}|${var.members}|${join(",", aws_instance.akka-broadcasters.*.private_dns)}")
 
     connection {
         host        = self.public_ip
@@ -165,7 +187,7 @@ resource "aws_instance" "akka-1" {
     }
 }
 resource "aws_instance" "akka-2" {
-    count = (var.servers - 1) / 3
+    count = (var.servers - var.broadcasters - 1) / 3
     ami = aws_ami_from_instance.akka-template-ami.id
     instance_type = var.instance_type
     vpc_security_group_ids = [var.aws_security_group]
@@ -177,7 +199,7 @@ resource "aws_instance" "akka-2" {
         Name = "${var.tag_name}-${count.index}"
     }
 
-    user_data = base64encode("${aws_instance.akka_seed_node.private_dns}|${var.members}")
+    user_data = base64encode("${aws_instance.akka_seed_node.private_dns}|${var.members}|${join(",", aws_instance.akka-broadcasters.*.private_dns)}")
 
     connection {
         host        = self.public_ip
@@ -186,7 +208,7 @@ resource "aws_instance" "akka-2" {
     }
 }
 resource "aws_instance" "akka-3" {
-    count = (var.servers - 1) / 3
+    count = (var.servers - var.broadcasters - 1) / 3
     ami = aws_ami_from_instance.akka-template-ami.id
     instance_type = var.instance_type
     vpc_security_group_ids = [var.aws_security_group]
@@ -198,7 +220,7 @@ resource "aws_instance" "akka-3" {
         Name = "${var.tag_name}-${count.index}"
     }
 
-    user_data = base64encode("${aws_instance.akka_seed_node.private_dns}|${var.members}")
+    user_data = base64encode("${aws_instance.akka_seed_node.private_dns}|${var.members}|${join(",", aws_instance.akka-broadcasters.*.private_dns)}")
 
     connection {
         host        = self.public_ip

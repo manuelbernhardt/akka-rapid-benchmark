@@ -4,7 +4,7 @@ package io.bernhardt.akka.rapid
 import akka.Done
 import akka.actor.ActorSystem
 import akka.cluster.Cluster
-import com.typesafe.config.ConfigFactory
+import com.typesafe.config.{ConfigFactory, ConfigValueFactory}
 
 import scala.concurrent.duration._
 import scala.concurrent._
@@ -41,6 +41,10 @@ object Main extends App {
 
   val isSeedNode = seedNode.contains("SEED")
 
+  val broadcasters = sys.env.get("BROADCASTERS").filterNot(_.trim.isEmpty).map(_.split(",")).getOrElse(Array.empty)
+
+  val isBroadcaster = broadcasters.contains(hostname)
+
   val isRunningOnAWS = !sys.env.get("AWS_REGION").forall(_.trim.isEmpty)
 
   val expectedMemberCount = sys.env.get("EXPECT_MEMBERS").filterNot(_.trim.isEmpty).map(_.toInt).getOrElse(0)
@@ -70,6 +74,9 @@ object Main extends App {
       case "SEED" =>
         // don't wait
         Future.successful(Done)
+      case _ if isBroadcaster =>
+        // don't wait either
+        Future.successful(Done)
       case seedHostname =>
         val config = ConfigFactory.parseString(
           """
@@ -89,13 +96,9 @@ object Main extends App {
             |
             |}""".stripMargin).withFallback(ConfigFactory.defaultReference())
         val akkaHttpSystem = ActorSystem("http", config)
-        akkaHttpSystem.registerOnTermination {
-          logger.info("Shutting down http ActorSystem")
-        }
         val coordinationClient = akkaHttpSystem.actorOf(StartupCoordinationClient.props(hostname, seedHostname))
         val waitForOthers = coordinationClient.ask(StartupCoordinationClient.Register)(WaitForMembersTimeout).mapTo[Done]
         waitForOthers.flatMap { _ =>
-          logger.info("{} JVMs running", expectedMemberCount)
           akkaHttpSystem.terminate()
         }
         .map { _ => Done }
@@ -110,14 +113,21 @@ object Main extends App {
         logger.info("Starting as seed node, remoting port {}", port)
         val system = ActorSystem(SystemName, seedNodeConfig(hostname).withFallback(remotingPortConfig(port).withFallback(ConfigFactory.load())))
         logger.info("Seed node starting to listen for JVM registrations")
-        new StartupCoordinationServer(hostname, expectedMemberCount)(system)
+        new StartupCoordinationServer(hostname, expectedMemberCount, broadcasters.size)(system)
         Some(system)
       case "TEMPLATE" =>
         // we're the template node and should not be running
         None
-      case host =>
-        logger.info("Starting with seed node configured at {}, remoting port {}", host, port)
+      case host if isBroadcaster =>
+        logger.info("Starting broadcasting node with seed node configured at {}, remoting port {}", host, port)
         Some(ActorSystem(SystemName, seedNodeConfig(host).withFallback(remotingPortConfig(port).withFallback(ConfigFactory.load()))))
+      case host =>
+        import scala.jdk.CollectionConverters._
+        logger.info("Starting with seed node configured at {}, {} broadcasters, remoting port {}", host, broadcasters.size, port)
+        val broadcastersWithPort = broadcasters.map(host => s"$host:$port")
+        val config = seedNodeConfig(host).withFallback(remotingPortConfig(port).withFallback(ConfigFactory.load()))
+          .withValue("akka.cluster.rapid.broadcasters", ConfigValueFactory.fromIterable(broadcastersWithPort.toIterable.asJava))
+        Some(ActorSystem(SystemName, config))
     } getOrElse {
       logger.info("Starting local system")
       Some(ActorSystem(SystemName, remotingPortConfig(port).withFallback(ConfigFactory.load())))

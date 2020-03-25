@@ -47,9 +47,9 @@ class StartupCoordinationClient(selfHostName: String, seedHostname: String) exte
 
   def waiting: Receive = {
     case WaitForMembers =>
-      log.info("Starting to wait for other members at an interval of {} seconds, maximum timeout of {} minutes", WaitForMembersDelay.toSeconds, Main.WaitForMembersTimeout.toMinutes)
-      val attempts = (Main.WaitForMembersTimeout.toSeconds / WaitForMembersDelay.toSeconds).toInt
-      retry(() => checkReadiness, attempts, WaitForMembersDelay).recover {
+      log.info("Starting to wait for other members at an interval of {} seconds, maximum timeout of {} minutes", WaitForMembersInterval.toSeconds, Main.WaitForMembersTimeout.toMinutes)
+      val attempts = (Main.WaitForMembersTimeout.toSeconds / WaitForMembersInterval.toSeconds).toInt
+      retry(() => checkReadiness, attempts, WaitForMembersInterval).recover {
         case NonFatal(t) =>
           log.error(t, "Waiting for members failed, giving up")
       } pipeTo self
@@ -86,7 +86,7 @@ class StartupCoordinationClient(selfHostName: String, seedHostname: String) exte
 
 object StartupCoordinationClient {
 
-  val WaitForMembersDelay = 5.seconds
+  val WaitForMembersInterval = 3.seconds
 
   case object Register
 

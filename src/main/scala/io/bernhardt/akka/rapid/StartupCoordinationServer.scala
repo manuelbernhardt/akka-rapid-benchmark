@@ -17,12 +17,15 @@ import scala.util.Success
 /**
  * Simplistic register to keep track of started JVMs so that we can bootstrap clustering at roughly the same time
  */
-class StartupCoordinationServer[T](interface: String, expectedMemberCount: Int)(implicit system: ActorSystem) {
+class StartupCoordinationServer[T](interface: String, expectedMemberCount: Int, broadcasterCount: Int)(implicit system: ActorSystem) {
   import StartupCoordinator._
 
   implicit val askTimeout = Timeout(1.second)
 
-  val coordinator = system.actorOf(Props(new StartupCoordinator(expectedMemberCount)), "coordinator")
+  val coordinator = {
+    val expectedNodeCount = expectedMemberCount - broadcasterCount - 1 // seed node
+    system.actorOf(Props(new StartupCoordinator(expectedNodeCount)), "coordinator")
+  }
 
   val route =
     concat(
@@ -47,7 +50,7 @@ class StartupCoordinationServer[T](interface: String, expectedMemberCount: Int)(
 
 }
 
-class StartupCoordinator(expectedMemberCount: Int) extends Actor with Timers with ActorLogging {
+class StartupCoordinator(expectedNodeCount: Int) extends Actor with Timers with ActorLogging {
 
   context.system.eventStream.subscribe(self, classOf[MemberEvent])
 
@@ -65,7 +68,7 @@ class StartupCoordinator(expectedMemberCount: Int) extends Actor with Timers wit
     case Register(host) =>
       log.info("Node {} registered, total of {} unique nodes", host, registeredHosts.size)
       registeredHosts += host
-      if (registeredHosts.size == expectedMemberCount - 1) {
+      if (registeredHosts.size == expectedNodeCount) {
         availableHosts ++= registeredHosts
         nextBatch(InitialBatchSize)
         timers.startTimerWithFixedDelay(ProgressTick, ProgressTick, ProgressTimeout)
@@ -88,17 +91,15 @@ class StartupCoordinator(expectedMemberCount: Int) extends Actor with Timers wit
               batchSize,
               FiniteDuration(System.currentTimeMillis() - batchStartTime, TimeUnit.MILLISECONDS).toSeconds
             )
-            if(joinedHosts.size < expectedMemberCount) {
+            if(joinedHosts.size < expectedNodeCount) {
               timers.startSingleTimer(NextBatch, NextBatch, BatchInterval)
             }
           }
-          log.info("Host {} joined, total of {} joined hosts and {} joining", host, joinedHosts.size, joinedHosts.size)
-        } else {
-          log.warning("Host {} joined not part of joining hosts?", host)
+          log.info("Host {} joined, total of {} joined hosts and {} joining", host, joinedHosts.size, joiningHosts.size)
         }
       }
     case ProgressTick =>
-      if (joinedHosts.size < expectedMemberCount && (System.currentTimeMillis() - lastAddedMemberTime) > ProgressTimeout.toMillis) {
+      if (joinedHosts.size < expectedNodeCount && (System.currentTimeMillis() - lastAddedMemberTime) > ProgressTimeout.toMillis) {
         log.info("Forcing progress after {} ms", ProgressTimeout.toMillis)
         self ! NextBatch
       }
@@ -126,8 +127,8 @@ object StartupCoordinator {
   final case object NextBatch
   final case object ProgressTick
 
-  val InitialBatchSize = 10
-  val IncrementalBatchSize = 10
+  val InitialBatchSize = 1000
+  val IncrementalBatchSize = 1000
 
   val BatchInterval = 15.seconds
   val ProgressCheckInterval = 15.seconds
