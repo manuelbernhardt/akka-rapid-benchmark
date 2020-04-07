@@ -61,8 +61,20 @@ resource "aws_instance" "akka-template-instance" {
         destination = "/home/ubuntu/akka-cluster"
     }
     provisioner "file" {
-        source      = "${path.module}/akka-cluster-seed"
+        content     = templatefile("${path.module}/akka-cluster-seed.tpl", {
+            service_name = "akka-rapid-seed",
+            apm_server_url = var.apm_server_url,
+            apm_token = var.apm_token
+        })
         destination = "/home/ubuntu/akka-cluster-seed"
+    }
+    provisioner "file" {
+        content     = templatefile("${path.module}/akka-cluster-broadcaster.tpl", {
+            service_name = "akka-rapid-broadcaster",
+            apm_server_url = var.apm_server_url,
+            apm_token = var.apm_token
+        })
+        destination = "/home/ubuntu/akka-cluster-broadcaster"
     }
     provisioner "file" {
         content     = templatefile("${path.module}/filebeat.yml.tpl", {
@@ -71,6 +83,10 @@ resource "aws_instance" "akka-template-instance" {
             kibana_host = var.elastic_kibana
         })
         destination = "/tmp/filebeat.yml"
+    }
+    provisioner "file" {
+        source      = "${path.module}/elastic-apm-agent-1.15.0.jar"
+        destination = "/tmp/elastic-apm-agent-1.15.0.jar"
     }
     provisioner "file" {
         source      = "${path.module}/../target/universal/akka-rapid-benchmark-1.0.zip"
@@ -111,7 +127,7 @@ resource "aws_placement_group" "akka-cluster" {
 
 resource "aws_instance" "akka_seed_node" {
     ami = aws_ami_from_instance.akka-template-ami.id
-    instance_type = "c4.2xlarge"
+    instance_type = "c5.2xlarge"
     vpc_security_group_ids = [var.aws_security_group]
     key_name = var.key_name
 
@@ -146,7 +162,7 @@ resource "aws_instance" "akka_seed_node" {
 resource "aws_instance" "akka-broadcasters" {
     count = var.broadcasters
     ami = aws_ami_from_instance.akka-template-ami.id
-    instance_type = "c4.2xlarge"
+    instance_type = "c5.2xlarge"
     vpc_security_group_ids = [var.aws_security_group]
     key_name = var.key_name
     availability_zone = var.availability_zone
@@ -163,6 +179,19 @@ resource "aws_instance" "akka-broadcasters" {
         user        = lookup(var.user, var.platform)
         private_key = file(var.key_path)
     }
+
+    provisioner "file" {
+        source      = "${path.module}/install-monit-broadcaster.sh"
+        destination = "/tmp/install-monit-broadcaster.sh"
+    }
+
+    provisioner "remote-exec" {
+        inline = [
+            "chmod +x /tmp/install-monit-broadcaster.sh",
+            "/tmp/install-monit-broadcaster.sh 'SEED'"
+        ]
+    }
+
 }
 
 resource "aws_instance" "akka-1" {
@@ -176,6 +205,7 @@ resource "aws_instance" "akka-1" {
 
     tags = {
         Name = "${var.tag_name}-${count.index}"
+        SkipState = "true"
     }
 
     user_data = base64encode("${aws_instance.akka_seed_node.private_dns}|${var.members}|${join(",", aws_instance.akka-broadcasters.*.private_dns)}")
@@ -197,6 +227,7 @@ resource "aws_instance" "akka-2" {
 
     tags = {
         Name = "${var.tag_name}-${count.index}"
+        SkipState = "true"
     }
 
     user_data = base64encode("${aws_instance.akka_seed_node.private_dns}|${var.members}|${join(",", aws_instance.akka-broadcasters.*.private_dns)}")
@@ -218,6 +249,7 @@ resource "aws_instance" "akka-3" {
 
     tags = {
         Name = "${var.tag_name}-${count.index}"
+        SkipState = "true"
     }
 
     user_data = base64encode("${aws_instance.akka_seed_node.private_dns}|${var.members}|${join(",", aws_instance.akka-broadcasters.*.private_dns)}")

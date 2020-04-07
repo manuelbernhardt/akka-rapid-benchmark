@@ -34,12 +34,17 @@
     </appender>
 
 
-    <logger name="com.vrg.rapid" level="WARN" />
+    <logger name="com.vrg.rapid" level="INFO" />
     <logger name="akka" level="WARN" />
-    <logger name="io.bernhardt.akka.rapid" level="DEBUG" />
-    <logger name="main" level="DEBUG" />
+    <logger name="akka.cluster.rapid" level="INFO" />
+    <logger name="io.bernhardt.akka.rapid" level="INFO" />
+    <logger name="main" level="INFO" />
+    <logger name="scala.Tuple2" level="INFO"/> <!-- akka.remote.artery.AssociationRegistry -->
+    <logger name="akka.cluster.rapid.RapidMembershipService" level="INFO" />
+    <logger name="akka.stream.Materializer" level="WARN"/>
+    <logger name="akka.actor.ActorSystemImpl" level="ERROR"/>
 
-    <root level="DEBUG">
+    <root level="INFO">
         <appender-ref ref="ASYNCFILE" />
     </root>
 

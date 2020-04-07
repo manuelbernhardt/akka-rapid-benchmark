@@ -20,6 +20,16 @@ sudo sh -c "echo 'net.ipv4.neigh.default.gc_thresh1=16384' >> /etc/sysctl.conf"
 sudo sh -c "echo 'net.ipv4.neigh.default.gc_thresh2=28672' >> /etc/sysctl.conf"
 sudo sh -c "echo 'net.ipv4.neigh.default.gc_thresh3=32768' >> /etc/sysctl.conf"
 
+# More sockets - 2480 outgoing sockets / second, useful for broadcasting to 10k nodes
+sudo sh -c "echo 'net.ipv4.ip_local_port_range=\"3000 65000\"' >> /etc/sysctl.conf"
+sudo sh -c "echo 'net.ipv4.tcp_fin_timeout=25' >> /etc/sysctl.conf"
+
+# Support a higher connection rate (default 128)
+sudo sh -c "echo 'sysctl net.core.somaxconn=1024' >> /etc/sysctl.conf"
+
+# Increase conntrack table size
+sudo sh -c "echo 'net.ipv4.netfilter.ip_conntrack_max = 32768' >> /etc/sysctl.conf"
+
 echo "Installing dependencies..."
 sudo apt-get update
 sudo apt-get install -y openjdk-11-jdk
@@ -55,6 +65,9 @@ sudo cp /tmp/filebeat.yml /etc/filebeat
 sudo systemctl stop filebeat.service
 sudo systemctl start filebeat.service
 sudo systemctl enable filebeat.service
+
+echo "Installing APM agent"
+sudo cp /tmp/elastic-apm-agent-1.15.0.jar /opt
 
 echo "Installing akka..."
 SYSTEM_NAME=$(cat /tmp/system-name | tr -d '\n')

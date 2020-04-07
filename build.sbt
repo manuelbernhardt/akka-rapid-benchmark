@@ -19,6 +19,7 @@ libraryDependencies ++= Seq(
   "com.papertrailapp" % "logback-syslog4j" % "1.0.0",
   "org.codehaus.janino" % "janino" % "3.1.0",
   "com.vrg" % "rapid" %  "1.0-SNAPSHOT",
+  "org.hdrhistogram" % "HdrHistogram" % "2.1.12",
   "org.scalatest" %% "scalatest" % "3.1.0" % Test
 )
 
@@ -38,6 +39,7 @@ maintainer := "manuel@bernhardt.io" // keep native packager from complaining
 
 bashScriptExtraDefines ++= Seq(
   "export USER_DATA=$(/opt/ec2-metadata | grep user-data | awk '{print $2}')",
+  "export EC2_INSTANCE_TYPE=$(/opt/ec2-metadata | grep instance-type | awk '{print $2}')",
   "export HOSTNAME=`hostname -f`",
   "export SEED_NODE=$(echo $USER_DATA | awk -F'|' '{print $1}')",
   "export EXPECT_MEMBERS=$(echo $USER_DATA | awk -F'|' '{print $2}')",

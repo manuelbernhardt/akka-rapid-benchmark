@@ -13,6 +13,11 @@ package object rapid {
     Thread.sleep(nextMinute.toEpochMilli - Instant.now().toEpochMilli)
   }
 
+  def shutdownMachine(): Unit = {
+    import scala.sys.process._
+    "shutdown -fh now".run()
+  }
+
   lazy val ec2Api = for {
     keyId <- sys.env.get("AWS_ACCESS_KEY").filterNot(_.trim.isEmpty)
     keySecret <- sys.env.get("AWS_SECRET_ACCESS_KEY").filterNot(_.trim.isEmpty)

@@ -10,7 +10,7 @@ class MembershipRecorder(expectedCount: Int) extends Actor with Timers with Acto
 
   val cluster = Cluster(context.system)
 
-  timers.startTimerAtFixedRate(Tick, Tick, 1.second)
+  timers.startTimerAtFixedRate(Tick, Tick, 2.seconds)
 
   override def receive: Receive = {
     case Tick =>

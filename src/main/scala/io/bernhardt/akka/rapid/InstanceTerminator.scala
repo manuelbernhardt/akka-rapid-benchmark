@@ -6,8 +6,8 @@ package io.bernhardt.akka.rapid
 object InstanceTerminator extends App {
 
   ec2Api.foreach { api =>
-    api.instances.grouped(50).foreach { group =>
-      println(s"Stopping instances ${group.map(_.instanceId).mkString(" ")}")
+    api.instances.filter(_.state.getName == "running").grouped(50).foreach { group =>
+      println(s"Terminating instances ${group.map(_.instanceId).mkString(" ")}")
       api.terminate(group :_*)
     }
   }

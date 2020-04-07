@@ -74,6 +74,16 @@ variable "elastic_cloudauth" {
     description = "Elastic cloud auth"
 }
 
+variable "apm_server_url" {
+  default = ""
+  description = "Elastic APM server url"
+}
+
+variable "apm_token" {
+  default = ""
+  description = "Elastic APM token"
+}
+
 variable "system_name" {
     default     = "akka-cluster"
     description = "The actor system name"
