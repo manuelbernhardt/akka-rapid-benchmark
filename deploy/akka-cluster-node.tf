@@ -61,19 +61,11 @@ resource "aws_instance" "akka-template-instance" {
         destination = "/home/ubuntu/akka-cluster"
     }
     provisioner "file" {
-        content     = templatefile("${path.module}/akka-cluster-seed.tpl", {
-            service_name = "akka-rapid-seed",
-            apm_server_url = var.apm_server_url,
-            apm_token = var.apm_token
-        })
+        source      = "${path.module}/akka-cluster-seed"
         destination = "/home/ubuntu/akka-cluster-seed"
     }
     provisioner "file" {
-        content     = templatefile("${path.module}/akka-cluster-broadcaster.tpl", {
-            service_name = "akka-rapid-broadcaster",
-            apm_server_url = var.apm_server_url,
-            apm_token = var.apm_token
-        })
+        source      = "${path.module}/akka-cluster-broadcaster"
         destination = "/home/ubuntu/akka-cluster-broadcaster"
     }
     provisioner "file" {
@@ -83,10 +75,6 @@ resource "aws_instance" "akka-template-instance" {
             kibana_host = var.elastic_kibana
         })
         destination = "/tmp/filebeat.yml"
-    }
-    provisioner "file" {
-        source      = "${path.module}/elastic-apm-agent-1.15.0.jar"
-        destination = "/tmp/elastic-apm-agent-1.15.0.jar"
     }
     provisioner "file" {
         source      = "${path.module}/../target/universal/akka-rapid-benchmark-1.0.zip"

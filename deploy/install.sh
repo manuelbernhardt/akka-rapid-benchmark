@@ -66,9 +66,6 @@ sudo systemctl stop filebeat.service
 sudo systemctl start filebeat.service
 sudo systemctl enable filebeat.service
 
-echo "Installing APM agent"
-sudo cp /tmp/elastic-apm-agent-1.15.0.jar /opt
-
 echo "Installing akka..."
 SYSTEM_NAME=$(cat /tmp/system-name | tr -d '\n')
 AWS_ACCESS_KEY_ID=$(cat /tmp/aws-access-key-id | tr -d '\n')
