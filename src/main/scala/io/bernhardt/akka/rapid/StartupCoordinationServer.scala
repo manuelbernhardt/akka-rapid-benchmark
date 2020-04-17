@@ -3,7 +3,7 @@ package io.bernhardt.akka.rapid
 import java.util.concurrent.TimeUnit
 
 import akka.actor.{Actor, ActorLogging, ActorSystem, Props, RootActorPath, Timers}
-import akka.cluster.{Cluster, MemberStatus}
+import akka.cluster.{Cluster, ClusterEvent, MemberStatus}
 import akka.cluster.ClusterEvent.{MemberEvent, MemberUp}
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.{HttpMethods, HttpRequest, StatusCodes}
@@ -87,126 +87,167 @@ class StartupCoordinator(expectedMemberCount: Int, broadcasterCount: Int) extend
   val cluster = Cluster(context.system)
 
 
-  def receive = {
+  def receive: Receive = {
     case Register(host, isBroadcaster) =>
-      if (!hasStarted && registeredHosts.size > expectedJoiningCount + SpareHostsLimit || hasStarted && registeredHosts.size > SpareHostsLimit) {
-        sender() ! GoAway
-        log.debug("Surplus node {} registered, told to go away", host)
-      } else {
-        if (isBroadcaster) {
-          registeredBroadcasters += host
-          sender() ! Registered
-          log.info("Node {} registered, total of {} unique broadcasters", host, registeredBroadcasters.size)
-        } else {
-          registeredHosts += host
-          sender() ! Registered
-          val size = if(hasStarted) expectedJoiningCount + registeredHosts.size else registeredHosts.size
-          if (size > 0 && size % 10 == 0) {
-            log.info("Node {} registered, total of {} unique nodes", host, size)
-          }
-        }
-      }
-
-      if (!hasStartedBroadcasters && registeredBroadcasters.size == broadcasterCount) {
-        log.info("Starting {} broadcasters", broadcasterCount)
-        // OK to form the initial cluster
-        registeredBroadcasters.foreach { host =>
-          sendRequest(host, "ready")
-        }
-        hasStartedBroadcasters = true
-      }
-
-      val enoughNodes = registeredHosts.size >= expectedJoiningCount
-      val enoughSeedNodesAndBroadcasters = cluster.state.members.size >= broadcasterCount + 1
-      val hasAlreadyStarted = batchStartTime > 0
-      val okToJoin = enoughNodes && enoughSeedNodesAndBroadcasters && !hasAlreadyStarted
-      if (okToJoin) {
-        hasStarted = true
-        log.info("Enough nodes and all broadcasters available, starting now")
-        availableHosts ++= registeredHosts
-        registeredHosts = Set.empty
-        nextBatch(InitialBatchSize)
-      }
+      handleRegister(host, isBroadcaster)
     case NextBatch =>
-      timers.startTimerWithFixedDelay(ProgressTick, ProgressTick, progressTimeout)
-      if (availableHosts.isEmpty && joinedHosts.size < expectedJoiningCount) {
-        // everyone should be here, but they aren't
-        // likely the results of small partitions (individual instances can get partitioned)
-        // ask for backup
-        log.warning("Taking {} hosts from surplus", expectedJoiningCount - joiningHosts.size)
-        val more = registeredHosts.take(expectedJoiningCount - joinedHosts.size)
-        registeredHosts --= more
-        availableHosts ++= more
-      }
-      nextBatch(IncrementalBatchSize)
+      handleNextBatch()
     case up: MemberUp =>
-      up.member.address.host.foreach { host =>
-        val jitterProgress = joiningHosts.size - BatchJitter <= 0 && (System.currentTimeMillis() - lastAddedMemberTime) >= JitterProgressTimeout.toMillis
-        lastAddedMemberTime = System.currentTimeMillis()
-        if (joiningHosts.contains(host) || lateJoiningHosts.contains(host)) {
-          joinedHosts += host
-          joiningHosts -= host
-          lateJoiningHosts -= host
-
-          if(joiningHosts.isEmpty || jitterProgress) {
-            val duration = FiniteDuration(System.currentTimeMillis() - batchStartTime, TimeUnit.MILLISECONDS)
-            timers.cancel(ProgressTick)
-            log.info("Batch of size {} took {} seconds to complete",
-              batchSize,
-              duration.toSeconds
-            )
-            if(joinedHosts.size < expectedJoiningCount) {
-              timers.startSingleTimer(NextBatch, NextBatch, batchInterval)
-            }
-          }
-          if (joinedHosts.size == expectedJoiningCount) {
-            log.info("REACHED TARGET SIZE of {}!!!!", joinedHosts.size + seedAndBroadcasters.size)
-            log.info("Scheduling kill of 1% in 1 minute")
-            timers.cancel(ProgressTick)
-            timers.startSingleTimer(KillOnePercent, KillOnePercent, 1.minute)
-          }
-          log.debug("Host {} joined, total of {} joined hosts and {} joining", host, joinedHosts.size, joiningHosts.size)
-        } else {
-          // seed (this node) or broadcasting nodes
-          seedAndBroadcasters += host
-        }
-      }
+      handleMemberUp(up)
     case ProgressTick =>
-      if (joinedHosts.nonEmpty && joinedHosts.size < expectedJoiningCount && (System.currentTimeMillis() - lastAddedMemberTime) > InitialProgressTimeout.toMillis) {
-        log.info("Forcing progress after {} s, moving {} timed out joiners to late joiners, kicking out {} late joiners, currently joined: {}",
-          progressTimeout.toSeconds, joiningHosts.size, lateJoiningHosts.size, joinedHosts.size + seedAndBroadcasters.size)
-        lateJoiningHosts.foreach { host =>
-          sendRequest(host, "timeout")
-        }
-        lateJoiningHosts = Set.empty
-        lateJoiningHosts ++= joiningHosts
-        joiningHosts = Set.empty
-        batchInterval = FiniteDuration((batchInterval.toSeconds * 1.5).toInt, TimeUnit.SECONDS)
-        self ! NextBatch
-      }
+      handleProgressTick()
     case KillOnePercent =>
-      val onePercent = expectedMemberCount / 100
-      val candidates = Cluster(context.system).state.members
-        .filter(_.status == MemberStatus.Up)
-        .filterNot(m => m.hasRole("seed") || m.hasRole("broadcaster"))
-        .map(_.address)
-      val victims = Random.shuffle(candidates).take(onePercent)
-      log.info("Sending kill message to {} instances", onePercent)
-      log.info(victims.map(_.host.get).mkString(" "))
-      victims.foreach { victim =>
-        context.actorSelection(RootActorPath(victim) / "user" / "listener") ! ActionListener.Kill
+      handleKillOnePercent()
+  }
 
-      }
-    case StopAll =>
-      (registeredHosts ++ joiningHosts ++ joinedHosts ++ availableHosts ++ seedAndBroadcasters).foreach { host =>
-        sendRequest(host, "leaveGracefully")
-      }
+  def waitingForJoiners: Receive = {
+    case Register(host, isBroadcaster) =>
+      handleRegister(host, isBroadcaster)
+    case up: MemberUp =>
+      handleMemberUp(up)
+    case ProgressTick =>
+      handleProgressTick()
+    case KillOnePercent =>
+      handleKillOnePercent()
+  }
+
+  override def unhandled(message: Any): Unit = message match {
+    case StopAll => handleStopAll()
     case _: MemberEvent => // ignore
+    case other => super.unhandled(other)
+  }
+
+  private def handleRegister(host: String, isBroadcaster: Boolean): Unit = {
+    if (!hasStarted && registeredHosts.size > expectedJoiningCount + SpareHostsLimit || hasStarted && registeredHosts.size > SpareHostsLimit) {
+      sender() ! GoAway
+      log.debug("Surplus node {} registered, told to go away", host)
+    } else {
+      if (isBroadcaster) {
+        registeredBroadcasters += host
+        sender() ! Registered
+        log.info("Node {} registered, total of {} unique broadcasters", host, registeredBroadcasters.size)
+      } else {
+        registeredHosts += host
+        sender() ! Registered
+        val size = if(hasStarted) expectedJoiningCount + registeredHosts.size else registeredHosts.size
+        if (size > 0 && size % 10 == 0) {
+          log.info("Node {} registered, total of {} unique nodes", host, size)
+        }
+      }
+    }
+
+    if (!hasStartedBroadcasters && registeredBroadcasters.size == broadcasterCount) {
+      log.info("Starting {} broadcasters", broadcasterCount)
+      // OK to form the initial cluster
+      registeredBroadcasters.foreach { host =>
+        sendRequest(host, "ready")
+      }
+      hasStartedBroadcasters = true
+    }
+
+    val enoughNodes = registeredHosts.size >= expectedJoiningCount
+    val enoughSeedNodesAndBroadcasters = cluster.state.members.size >= broadcasterCount + 1
+    val hasAlreadyStarted = batchStartTime > 0
+    val okToJoin = enoughNodes && enoughSeedNodesAndBroadcasters && !hasAlreadyStarted
+    if (okToJoin) {
+      hasStarted = true
+      log.info("Enough nodes and all broadcasters available, starting now")
+      availableHosts ++= registeredHosts
+      registeredHosts = Set.empty
+      nextBatch(InitialBatchSize)
+    }
+  }
+
+  private def handleNextBatch(): Unit = {
+    timers.startTimerWithFixedDelay(ProgressTick, ProgressTick, progressTimeout)
+    if (availableHosts.isEmpty && joinedHosts.size < expectedJoiningCount) {
+      // everyone should be here, but they aren't
+      // likely the results of small partitions (individual instances can get partitioned)
+      // ask for backup
+      log.warning("Taking {} hosts from surplus", expectedJoiningCount - joinedHosts.size)
+      val more = registeredHosts.take(expectedJoiningCount - joinedHosts.size)
+      registeredHosts --= more
+      availableHosts ++= more
+    }
+    nextBatch(IncrementalBatchSize)
+  }
+
+  private def handleMemberUp(up: ClusterEvent.MemberUp): Unit = {
+    up.member.address.host.foreach { host =>
+      lastAddedMemberTime = System.currentTimeMillis()
+      if (joiningHosts.contains(host) || lateJoiningHosts.contains(host)) {
+        joinedHosts += host
+        joiningHosts -= host
+        lateJoiningHosts -= host
+
+        if(joiningHosts.isEmpty) {
+          val duration = FiniteDuration(System.currentTimeMillis() - batchStartTime, TimeUnit.MILLISECONDS)
+          timers.cancel(ProgressTick)
+          log.info("Batch of size {} took {} seconds to complete, {} total members in cluster",
+            batchSize,
+            duration.toSeconds,
+            joinedHosts.size + seedAndBroadcasters.size
+          )
+          if(joinedHosts.size < expectedJoiningCount) {
+            timers.startSingleTimer(NextBatch, NextBatch, batchInterval)
+            context.become(receive)
+          }
+        }
+        if (joinedHosts.size == expectedJoiningCount) {
+          log.info("REACHED TARGET SIZE of {}!!!!", joinedHosts.size + seedAndBroadcasters.size + 1)
+          log.info("Scheduling kill of 1% in 1 minute")
+          timers.cancel(ProgressTick)
+          timers.startSingleTimer(KillOnePercent, KillOnePercent, 1.minute)
+        }
+        log.debug("Host {} joined, total of {} joined hosts and {} joining", host, joinedHosts.size, joiningHosts.size)
+      } else {
+        // seed (this node) or broadcasting nodes
+        seedAndBroadcasters += host
+      }
+    }
+  }
+
+  private def handleProgressTick(): Unit = {
+    if (joinedHosts.nonEmpty && joinedHosts.size < expectedJoiningCount && (System.currentTimeMillis() - lastAddedMemberTime) > InitialProgressTimeout.toMillis) {
+      log.info("Forcing progress after {} s, moving {} timed out joiners to late joiners, kicking out {} late joiners, currently joined: {}",
+        progressTimeout.toSeconds, joiningHosts.size, lateJoiningHosts.size, joinedHosts.size + seedAndBroadcasters.size)
+      lateJoiningHosts.foreach { host =>
+        sendRequest(host, "timeout")
+      }
+      lateJoiningHosts = Set.empty
+      lateJoiningHosts ++= joiningHosts
+      joiningHosts = Set.empty
+      batchInterval = FiniteDuration((batchInterval.toSeconds * 1.5).toInt, TimeUnit.SECONDS)
+      progressTimeout = FiniteDuration((progressTimeout.toSeconds * 1.2).toInt, TimeUnit.SECONDS)
+      self ! NextBatch
+      context.become(receive)
+    }
+  }
+
+  private def handleKillOnePercent(): Unit = {
+    val onePercent = expectedMemberCount / 100
+    val candidates = Cluster(context.system).state.members
+      .filter(_.status == MemberStatus.Up)
+      .filterNot(m => m.hasRole("seed") || m.hasRole("broadcaster"))
+      .map(_.address)
+    val victims = Random.shuffle(candidates).take(onePercent)
+    log.info("Sending kill message to {} instances", onePercent)
+    log.info(victims.map(_.host.get).mkString(" "))
+    victims.foreach { victim =>
+      sendRequest(victim.host.get, "leave")
+    }
+  }
+
+  private def handleStopAll(): Unit = {
+    log.info("Shutting down everyone")
+    (registeredHosts ++ joiningHosts ++ joinedHosts ++ availableHosts ++ seedAndBroadcasters).foreach { host =>
+      sendRequest(host, "leaveGracefully")
+    }
   }
 
   private def nextBatch(size: Int): Unit = {
     batchSize = size
-    log.info("Allowing batch of {} nodes to join", size)
+    log.info("Allowing batch of {} nodes to join after {} s", size, batchInterval.toSeconds)
     batchStartTime = System.currentTimeMillis()
     val batch = availableHosts.take(size)
     availableHosts = availableHosts.diff(batch)
@@ -214,6 +255,7 @@ class StartupCoordinator(expectedMemberCount: Int, broadcasterCount: Int) extend
     joiningHosts.foreach { host =>
       sendRequest(host, "ready")
     }
+    context.become(waitingForJoiners)
   }
 
   private def sendRequest(host: String, path: String): Unit = {
@@ -245,13 +287,12 @@ object StartupCoordinator {
 
   val InitialBatchSize = 500
   val IncrementalBatchSize = 500
-  val BatchJitter = 50
-  val SpareHostsLimit = 10
+  val SpareHostsLimit = 1500
+
 
   val InitialBatchInterval = 15.seconds
-  val InitialProgressTimeout = 60.seconds
+  val InitialProgressTimeout = 45.seconds
 
   val ProgressCheckInterval = 5.seconds
-  val JitterProgressTimeout = 10.seconds
 
 }
