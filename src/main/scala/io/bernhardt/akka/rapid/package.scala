@@ -8,9 +8,13 @@ import awscala.ec2.EC2
 
 package object rapid {
 
-  def shutdownMachine(): Unit = {
+  def shutdownMachineNow(): Unit = {
     import scala.sys.process._
     "shutdown -fh now".run()
+  }
+  def shutdownMachineGracefully(): Unit = {
+    import scala.sys.process._
+    "shutdown".run()
   }
 
   lazy val ec2Api = for {

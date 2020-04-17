@@ -15,7 +15,11 @@ class MembershipRecorder(expectedCount: Int) extends Actor with Timers with Acto
   override def receive: Receive = {
     case Tick =>
       val memberCount = cluster.state.members.count(_.status == MemberStatus.Up)
-      log.info(s"""{"memberCount": $memberCount}""")
+      if (memberCount >= expectedCount) {
+        log.info(s"""{"memberCount": $memberCount, "reachedCount": true}""")
+      } else {
+        log.info(s"""{"memberCount": $memberCount}""")
+      }
   }
 }
 

@@ -27,7 +27,7 @@ class ActionListener(disableSafetyStop: Boolean) extends Actor with ActorLogging
       if(instanceStopperFlagFile.exists()) {
         instanceStopperFlagFile.delete()
         log.info("== Killing instance when the next minute starts")
-        shutdownMachine()
+        shutdownMachineNow()
       }
       if(systemStopperFlagFile.exists()) {
         systemStopperFlagFile.delete()
@@ -50,10 +50,10 @@ class ActionListener(disableSafetyStop: Boolean) extends Actor with ActorLogging
       "shutdown".!
     case Kill =>
       log.info("Killing instance")
-      shutdownMachine()
+      shutdownMachineNow()
     case SafetyStop =>
       log.info("Shutting down after 10 minutes")
-      shutdownMachine()
+      shutdownMachineNow()
 
   }
 

@@ -26,7 +26,13 @@ class StartupClient(selfHostName: String, seedHostName: String, expectedMemberCo
     },
     path("leave") {
       post {
-        shutdownMachine()
+        shutdownMachineNow()
+        complete(OK)
+      }
+    },
+    path("leaveGracefully") {
+      post {
+        shutdownMachineGracefully()
         complete(OK)
       }
     },
@@ -111,7 +117,7 @@ class StartupCoordinationClient(selfHostName: String, seedHostname: String, expe
         import scala.sys.process._
         response.discardEntityBytes().future()
         log.info("We're told to leave")
-        shutdownMachine()
+        shutdownMachineNow()
         Future.failed(new IllegalStateException())
       case response =>
         response.discardEntityBytes().future().flatMap { _ =>

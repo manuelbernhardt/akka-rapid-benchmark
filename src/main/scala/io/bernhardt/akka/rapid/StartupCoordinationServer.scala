@@ -160,10 +160,10 @@ class StartupCoordinator(expectedMemberCount: Int, broadcasterCount: Int) extend
             }
           }
           if (joinedHosts.size == expectedJoiningCount) {
-            log.info("REACHED TARGET SIZE of {}!!!!", joinedHosts.size)
-            log.info("Scheduling kill of 1% in 2 minutes")
+            log.info("REACHED TARGET SIZE of {}!!!!", joinedHosts.size + seedAndBroadcasters.size)
+            log.info("Scheduling kill of 1% in 1 minute")
             timers.cancel(ProgressTick)
-            timers.startSingleTimer(KillOnePercent, KillOnePercent, 2.minutes)
+            timers.startSingleTimer(KillOnePercent, KillOnePercent, 1.minute)
           }
           log.debug("Host {} joined, total of {} joined hosts and {} joining", host, joinedHosts.size, joiningHosts.size)
         } else {
@@ -192,13 +192,14 @@ class StartupCoordinator(expectedMemberCount: Int, broadcasterCount: Int) extend
         .map(_.address)
       val victims = Random.shuffle(candidates).take(onePercent)
       log.info("Sending kill message to {} instances", onePercent)
+      log.info(victims.map(_.host.get).mkString(" "))
       victims.foreach { victim =>
         context.actorSelection(RootActorPath(victim) / "user" / "listener") ! ActionListener.Kill
 
       }
     case StopAll =>
       (registeredHosts ++ joiningHosts ++ joinedHosts ++ availableHosts ++ seedAndBroadcasters).foreach { host =>
-        sendRequest(host, "leave")
+        sendRequest(host, "leaveGracefully")
       }
     case _: MemberEvent => // ignore
   }
@@ -245,7 +246,7 @@ object StartupCoordinator {
   val InitialBatchSize = 500
   val IncrementalBatchSize = 500
   val BatchJitter = 50
-  val SpareHostsLimit = 1500
+  val SpareHostsLimit = 10
 
   val InitialBatchInterval = 15.seconds
   val InitialProgressTimeout = 60.seconds
