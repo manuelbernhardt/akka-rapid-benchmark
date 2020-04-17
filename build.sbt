@@ -37,13 +37,15 @@ mainClass in Compile := Some("io.bernhardt.akka.rapid.Main")
 
 maintainer := "manuel@bernhardt.io" // keep native packager from complaining
 
-bashScriptExtraDefines ++= Seq(
+// disable those in order for the local cluster to work
+bashScriptExtraDefines in IntegrationTest ++= Seq(
   "export USER_DATA=$(/opt/ec2-metadata | grep user-data | awk '{print $2}')",
   "export EC2_INSTANCE_TYPE=$(/opt/ec2-metadata | grep instance-type | awk '{print $2}')",
-  "export HOSTNAME=`hostname -f`",
+  "export HOSTNAME=$(/opt/ec2-metadata | grep local-ipv4 | awk '{print $2}')",
   "export SEED_NODE=$(echo $USER_DATA | awk -F'|' '{print $1}')",
   "export EXPECT_MEMBERS=$(echo $USER_DATA | awk -F'|' '{print $2}')",
-  "export BROADCASTERS=$(echo $USER_DATA | awk -F'|' '{print $3}')",
+  "export EXPECT_BROADCASTERS=$(echo $USER_DATA | awk -F'|' '{print $4}')",
+  "export IS_BROADCASTER=$(echo $USER_DATA | awk -F'|' '{print $3}')",
   "export SYSTEM_NAME=ClusterSystem",
   "export AWS_ACCESS_KEY_ID=",
   "export AWS_ACCESS_KEY_SECRET=",

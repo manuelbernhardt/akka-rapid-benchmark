@@ -29,22 +29,33 @@
 
     <appender name="ASYNCFILE" class="ch.qos.logback.classic.AsyncAppender">
         <queueSize>8192</queueSize>
+        <maxFlushTime>0</maxFlushTime>
         <neverBlock>false</neverBlock>
         <appender-ref ref="FILE"/>
     </appender>
 
 
     <logger name="com.vrg.rapid" level="INFO" />
-    <logger name="akka" level="WARN" />
     <logger name="akka.cluster.rapid" level="INFO" />
     <logger name="io.bernhardt.akka.rapid" level="INFO" />
-    <logger name="main" level="INFO" />
-    <logger name="scala.Tuple2" level="INFO"/> <!-- akka.remote.artery.AssociationRegistry -->
-    <logger name="akka.cluster.rapid.RapidMembershipService" level="INFO" />
-    <logger name="akka.stream.Materializer" level="WARN"/>
+    <logger name="main" level="INFO" /> <!-- the experimental setup-->
+
+    <logger name="akka" level="WARN" />
+
+    <!-- akka.remote.artery.AssociationRegistry now logs the amount of associations at INFO -->
+    <logger name="scala.Tuple2" level="WARN"/>
+
+    <!-- this is enhanced to log the latency percentiles at INFO -->
+    <logger name="akka.cluster.rapid.RapidMembershipService" level="WARN" />
+
+    <!-- see https://github.com/akka/akka/issues/27602 - we simply cannot afford to log at WARN -->
+    <logger name="akka.stream.Materializer" level="ERROR"/>
+
+    <!-- mute the FlightRecorder not being able to load-->
     <logger name="akka.actor.ActorSystemImpl" level="ERROR"/>
 
     <root level="INFO">
+<!--        <appender-ref ref="CONSOLE" />-->
         <appender-ref ref="ASYNCFILE" />
     </root>
 

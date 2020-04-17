@@ -11,9 +11,9 @@ import scala.concurrent.duration._
 import scala.concurrent.Future
 import scala.util.control.NonFatal
 
-class StartupClient(selfHostName: String, seedHostName: String, expectedMemberCount: Int)(implicit system: ActorSystem) {
+class StartupClient(selfHostName: String, seedHostName: String, expectedMemberCount: Int, isBroadcaster: Boolean = false)(implicit system: ActorSystem) {
 
-  val client = system.actorOf(StartupCoordinationClient.props(selfHostName, seedHostName, expectedMemberCount), "startup-client")
+  val client = system.actorOf(StartupCoordinationClient.props(selfHostName, seedHostName, expectedMemberCount, isBroadcaster), "startup-client")
 
   client ! StartupCoordinationClient.Register
 
@@ -29,14 +29,21 @@ class StartupClient(selfHostName: String, seedHostName: String, expectedMemberCo
         shutdownMachine()
         complete(OK)
       }
+    },
+    path("timeout") {
+      post {
+        client ! StartupCoordinationClient.LeaveGracefully
+        complete(OK)
+      }
     }
+
   )
 
   Http().bindAndHandle(route, selfHostName, 2030)
 
 }
 
-class StartupCoordinationClient(selfHostName: String, seedHostname: String, expectedMemberCount: Int) extends Actor with ActorLogging with Timers {
+class StartupCoordinationClient(selfHostName: String, seedHostname: String, expectedMemberCount: Int, isBroadcaster: Boolean) extends Actor with ActorLogging with Timers {
 
   import StartupCoordinationClient._
   import akka.pattern.{pipe, retry}
@@ -47,6 +54,8 @@ class StartupCoordinationClient(selfHostName: String, seedHostname: String, expe
   implicit def scheduler = context.system.scheduler
 
   val http = Http()(context.system)
+
+  var hasStarted = false
 
   def receive: Receive = {
     case Register =>
@@ -68,30 +77,47 @@ class StartupCoordinationClient(selfHostName: String, seedHostname: String, expe
 
   def waiting: Receive = {
     case Ready =>
-      val cluster = Cluster(context.system)
-      cluster.join(Address(cluster.selfAddress.protocol, cluster.selfAddress.system, seedHostname, 2552))
-      context.actorOf(MembershipRecorder.props(expectedMemberCount), "recorder")
-      context.actorOf(ActionListener.props(disableSafetyStop = false), "listener")
-      log.info("==== Akka Node {} started", cluster.selfAddress.toString)
-
+      if (!hasStarted) {
+        val cluster = Cluster(context.system)
+        cluster.join(Address(cluster.selfAddress.protocol, cluster.selfAddress.system, seedHostname, 2552))
+        context.actorOf(MembershipRecorder.props(expectedMemberCount), "recorder")
+        context.actorOf(ActionListener.props(disableSafetyStop = isBroadcaster), "listener")
+        hasStarted = true
+        log.info("==== Akka Node {} started", cluster.selfAddress.toString)
+        context.become(ready)
+      }
+    case LeaveGracefully =>
+      // huh? looks like we have missed becoming ready in the first place
+      log.error("receiving leave during waiting... acting as if ready")
+      self ! Ready
   }
 
-  def registration = http.singleRequest(HttpRequest(
-    method = HttpMethods.POST,
-    uri = s"http://$seedHostname:2020/register/$selfHostName")
-  ).flatMap {
-    case response if response.status == StatusCodes.OK =>
-      response.discardEntityBytes().future()
-    case response if response.status == StatusCodes.EnhanceYourCalm =>
-      import scala.sys.process._
-      response.discardEntityBytes().future()
-      log.info("We're told to leave")
-      shutdownMachine()
-      Future.failed(new IllegalStateException())
-    case response =>
-      response.discardEntityBytes().future().flatMap { _ =>
-        Future.failed(new IllegalStateException(s"Status code ${response.status.defaultMessage()}"))
-      }
+  def ready: Receive = {
+    case Ready => // ignore, we are ready
+    case LeaveGracefully =>
+      val cluster = Cluster(context.system)
+      cluster.leave(cluster.selfAddress)
+  }
+
+  def registration = {
+    val nodeType = if (isBroadcaster) "registerBroadcaster" else "register"
+    http.singleRequest(HttpRequest(
+      method = HttpMethods.POST,
+      uri = s"http://$seedHostname:2020/$nodeType/$selfHostName")
+    ).flatMap {
+      case response if response.status == StatusCodes.OK =>
+        response.discardEntityBytes().future()
+      case response if response.status == StatusCodes.EnhanceYourCalm =>
+        import scala.sys.process._
+        response.discardEntityBytes().future()
+        log.info("We're told to leave")
+        shutdownMachine()
+        Future.failed(new IllegalStateException())
+      case response =>
+        response.discardEntityBytes().future().flatMap { _ =>
+          Future.failed(new IllegalStateException(s"Status code ${response.status.defaultMessage()}"))
+        }
+    }
   }
 
 }
@@ -100,8 +126,10 @@ object StartupCoordinationClient {
 
   case object Register
   case object Ready
+  case object LeaveGracefully
 
   protected case object Registered
 
-  def props(selfHostName: String, seedHostname: String, expectedMemberCount: Int) = Props(new StartupCoordinationClient(selfHostName, seedHostname, expectedMemberCount))
+  def props(selfHostName: String, seedHostname: String, expectedMemberCount: Int, isBroadcaster: Boolean) =
+    Props(new StartupCoordinationClient(selfHostName, seedHostname, expectedMemberCount, isBroadcaster))
 }

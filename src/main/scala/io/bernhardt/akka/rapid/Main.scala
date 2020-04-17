@@ -2,10 +2,11 @@ package io.bernhardt.akka.rapid
 
 
 import akka.actor.ActorSystem
-import com.typesafe.config.ConfigFactory
+import com.typesafe.config.{ConfigFactory, ConfigValueFactory}
 import org.slf4j.LoggerFactory
 
 import scala.concurrent.duration._
+import scala.jdk.CollectionConverters._
 
 object Main extends App {
 
@@ -34,13 +35,15 @@ object Main extends App {
 
   val isSeedNode = seedNode.contains("SEED")
 
-  val broadcasters = sys.env.get("BROADCASTERS").filterNot(_.trim.isEmpty).map(_.split(",")).getOrElse(Array.empty)
+  val isBroadcaster = sys.env.get("IS_BROADCASTER").filterNot(_.trim.isEmpty).contains("true")
 
-  val isBroadcaster = sys.props.get("akka.cluster.rapid.act-as-consistent-hash-broadcaster").contains("true")
+  val isStartedAsBroadcaster = sys.props.get("akka.cluster.rapid.act-as-consistent-hash-broadcaster").contains("true")
 
   val isRunningOnAWS = !sys.env.get("AWS_REGION").forall(_.trim.isEmpty)
 
   val expectedMemberCount = sys.env.get("EXPECT_MEMBERS").filterNot(_.trim.isEmpty).map(_.toInt).getOrElse(0)
+
+  val expectedBroadcastersCount = sys.env.get("EXPECT_BROADCASTERS").filterNot(_.trim.isEmpty).map(_.toInt).getOrElse(0)
 
   def start(): Unit = {
     if (!isSeedNode) {
@@ -49,27 +52,39 @@ object Main extends App {
     startClusterSystem()
   }
 
-
   def startClusterSystem(): Unit = {
     val system: Option[ActorSystem] = seedNode.map {
       case "SEED" =>
+        import java.time.Duration
         logger.info("Starting as seed node, remoting port {}", port)
-        val system = ActorSystem(SystemName, seedNodeConfig(hostname).withFallback(remotingPortConfig(port).withFallback(ConfigFactory.load())))
-        logger.info("Seed node starting to listen for JVM registrations")
-        new StartupCoordinationServer(hostname, expectedMemberCount, broadcasters.size)(system)
+        val config = seedNodeConfig(hostname).withFallback(remotingPortConfig(port).withFallback(ConfigFactory.load()))
+          .withValue("akka.cluster.roles", ConfigValueFactory.fromIterable(List("seed").asJava))
+          // batch all the joiner messages together in one message
+          .withValue("akka.cluster.rapid.batching-window", ConfigValueFactory.fromAnyRef(Duration.ofSeconds(2)))
+          .withValue("akka.remote.artery.advanced.outbound-message-queue-size", ConfigValueFactory.fromAnyRef(10000))
+        val system = ActorSystem(SystemName, config)
+        logger.info("Seed node starting to listen for JVM registrations with {} broadcasters", expectedBroadcastersCount)
+        new StartupCoordinationServer(hostname, expectedMemberCount, expectedBroadcastersCount)(system)
         startActors(system)
         Some(system)
       case "TEMPLATE" =>
         // we're the template node and should not be running
         None
-      case host if isBroadcaster =>
+      case host if isStartedAsBroadcaster =>
         logger.info("Starting broadcasting node with seed node configured at {}, remoting port {}", host, port)
-        val system = ActorSystem(SystemName, seedNodeConfig(host).withFallback(remotingPortConfig(port).withFallback(ConfigFactory.load())))
-        startActors(system)
+        val config = remotingPortConfig(port).withFallback(ConfigFactory.load())
+          .withValue("akka.cluster.roles", ConfigValueFactory.fromIterable(List("broadcaster").asJava))
+          .withValue("akka.remote.artery.advanced.outbound-message-queue-size", ConfigValueFactory.fromAnyRef(10000))
+        val system = ActorSystem(SystemName, config)
+        new StartupClient(hostname, host, expectedMemberCount, isBroadcaster = true)(system)
         Some(system)
-
+      case _ if isBroadcaster && !isStartedAsBroadcaster =>
+        // this is a broadcaster process starting for the first time, before it gets the proper startup params
+        // discard it
+        logger.info("Not ready broadcaster started, waiting to be stopped")
+        None
       case host =>
-        logger.info("Starting with seed node {}, {} broadcasters, remoting port {}", host, broadcasters.size, port)
+        logger.info("Starting with seed node {}, {} broadcasters, remoting port {}", host, expectedBroadcastersCount, port)
         val config = remotingPortConfig(port).withFallback(ConfigFactory.load())
         val system = ActorSystem(SystemName, config)
         new StartupClient(hostname, host, expectedMemberCount)(system)

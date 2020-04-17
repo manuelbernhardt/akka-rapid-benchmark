@@ -2,16 +2,16 @@
 set -e
 
 echo "Extending file limits"
-sudo sh -c "echo '*               hard    nofile            65536' >> /etc/security/limits.conf"
-sudo sh -c "echo '*               soft    nofile            65536' >> /etc/security/limits.conf"
-sudo sh -c "echo 'root            hard    nofile            65536' >> /etc/security/limits.conf"
-sudo sh -c "echo 'root            soft    nofile            65536' >> /etc/security/limits.conf"
+sudo sh -c "echo '*               hard    nofile            131072' >> /etc/security/limits.conf"
+sudo sh -c "echo '*               soft    nofile            131072' >> /etc/security/limits.conf"
+sudo sh -c "echo 'root            hard    nofile            131072' >> /etc/security/limits.conf"
+sudo sh -c "echo 'root            soft    nofile            131072' >> /etc/security/limits.conf"
 sudo sh -c "echo 'session required pam_limits.so' >> /etc/pam.d/common-session"
-sudo sh -c "echo 'fs.file-max = 65536' >> /etc/sysctl.conf"
+sudo sh -c "echo 'fs.file-max = 131072' >> /etc/sysctl.conf"
 
 # Because Ubuntu
-sudo sh -c "echo 'DefaultLimitNOFILE=65536' >> /etc/systemd/system.conf"
-sudo sh -c "echo 'DefaultLimitNOFILE=65536' >> /etc/systemd/user.conf"
+sudo sh -c "echo 'DefaultLimitNOFILE=131072' >> /etc/systemd/system.conf"
+sudo sh -c "echo 'DefaultLimitNOFILE=131072' >> /etc/systemd/user.conf"
 
 # ARP table cache defaults are too low for this scale when deploying in the same AZ
 sudo sh -c "echo 'net.ipv4.neigh.default.gc_interval=3600' >> /etc/sysctl.conf"
@@ -90,5 +90,6 @@ sudo chmod +x /opt/akka/bin/akka-rapid-benchmark
 
 echo "Installing monit"
 sudo mv /home/ubuntu/akka-cluster /etc/monit/conf.d
+sudo sed -i 's/  set daemon 120/  set daemon 15/g' /etc/monit/monitrc
 sudo systemctl restart monit.service
 sudo systemctl enable monit.service

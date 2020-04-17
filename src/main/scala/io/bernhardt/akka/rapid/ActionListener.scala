@@ -13,9 +13,9 @@ class ActionListener(disableSafetyStop: Boolean) extends Actor with ActorLogging
   import ActionListener._
   import context.dispatcher
 
-  timers.startTimerWithFixedDelay(Tick, Tick, 1.second)
+  timers.startTimerWithFixedDelay(Tick, Tick, 5.second)
   if (!disableSafetyStop) {
-    timers.startSingleTimer(SafetyStop, SafetyStop, 10.minutes)
+    timers.startSingleTimer(SafetyStop, SafetyStop, 30.minutes)
   }
 
   val instanceStopperFlagFile = new File("/tmp/akka-stop-instance")
@@ -27,13 +27,11 @@ class ActionListener(disableSafetyStop: Boolean) extends Actor with ActorLogging
       if(instanceStopperFlagFile.exists()) {
         instanceStopperFlagFile.delete()
         log.info("== Killing instance when the next minute starts")
-        waitUntilNextMinute()
         shutdownMachine()
       }
       if(systemStopperFlagFile.exists()) {
         systemStopperFlagFile.delete()
         log.info("== Shutting down actor system when the next minute starts")
-        waitUntilNextMinute()
         context.system.terminate() pipeTo self
       }
       if(allInstanceStopper.exists()) {

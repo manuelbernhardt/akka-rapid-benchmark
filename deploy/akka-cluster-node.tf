@@ -120,11 +120,6 @@ resource "aws_ami_from_instance" "akka-template-ami" {
   source_instance_id = aws_instance.akka-template-instance.id
 }
 
-resource "aws_placement_group" "akka-cluster" {
-  name     = "akka-cluster"
-  strategy = "cluster"
-}
-
 resource "aws_instance" "akka_seed_node" {
     ami = aws_ami_from_instance.akka-template-ami.id
     instance_type = "c5.2xlarge"
@@ -137,7 +132,8 @@ resource "aws_instance" "akka_seed_node" {
         Name = "${var.tag_name}-seed"
     }
 
-    user_data = base64encode("SEED|${var.members}")
+
+    user_data = base64encode("SEED|${var.members}|false|${var.broadcasters}")
 
     connection {
         host        = self.public_ip
@@ -172,7 +168,7 @@ resource "aws_instance" "akka-broadcasters" {
         Name = "${var.tag_name}-broadcaster-${count.index}"
     }
 
-    user_data = base64encode("${aws_instance.akka_seed_node.private_dns}|${var.members}|")
+    user_data = base64encode("${aws_instance.akka_seed_node.private_ip}|${var.members}|true|${var.broadcasters}")
 
     connection {
         host        = self.public_ip
@@ -208,13 +204,14 @@ resource "aws_instance" "akka-1" {
         SkipState = "true"
     }
 
-    user_data = base64encode("${aws_instance.akka_seed_node.private_dns}|${var.members}|${join(",", aws_instance.akka-broadcasters.*.private_dns)}")
+    user_data = base64encode("${aws_instance.akka_seed_node.private_ip}|${var.members}|false|${var.broadcasters}")
 
     connection {
         host        = self.public_ip
         user        = lookup(var.user, var.platform)
         private_key = file(var.key_path)
     }
+    depends_on = [ aws_instance.akka-broadcasters ]
 }
 resource "aws_instance" "akka-2" {
     count = (var.servers - var.broadcasters - 1) / 3
@@ -230,13 +227,14 @@ resource "aws_instance" "akka-2" {
         SkipState = "true"
     }
 
-    user_data = base64encode("${aws_instance.akka_seed_node.private_dns}|${var.members}|${join(",", aws_instance.akka-broadcasters.*.private_dns)}")
+    user_data = base64encode("${aws_instance.akka_seed_node.private_ip}|${var.members}|false|${var.broadcasters}")
 
     connection {
         host        = self.public_ip
         user        = lookup(var.user, var.platform)
         private_key = file(var.key_path)
     }
+    depends_on = [ aws_instance.akka-broadcasters ]
 }
 resource "aws_instance" "akka-3" {
     count = (var.servers - var.broadcasters - 1) / 3
@@ -252,13 +250,14 @@ resource "aws_instance" "akka-3" {
         SkipState = "true"
     }
 
-    user_data = base64encode("${aws_instance.akka_seed_node.private_dns}|${var.members}|${join(",", aws_instance.akka-broadcasters.*.private_dns)}")
+    user_data = base64encode("${aws_instance.akka_seed_node.private_ip}|${var.members}|false|${var.broadcasters}")
 
     connection {
         host        = self.public_ip
         user        = lookup(var.user, var.platform)
         private_key = file(var.key_path)
     }
+    depends_on = [ aws_instance.akka-broadcasters ]
 }
 
 // fleets don't seem to launch in any reasonable time-frame
@@ -269,7 +268,7 @@ resource "aws_instance" "akka-3" {
 //    instance_type = var.instance_type
 //    vpc_security_group_ids = [var.aws_security_group]
 //    key_name = var.key_name
-//    user_data = base64encode("${aws_instance.akka_seed_node.private_dns}|${var.members}")
+//    user_data = base64encode("${aws_instance.akka_seed_node.private_ip}|${var.members}")
 //
 //    placement {
 //        availability_zone = aws_instance.akka_seed_node.availability_zone
@@ -302,7 +301,7 @@ resource "aws_instance" "akka-3" {
 //    instance_type   = var.instance_type
 //    security_groups = [var.aws_security_group]
 //    key_name        = var.key_name
-//    user_data       = base64encode("${aws_instance.akka_seed_node.private_dns}|${var.members}")
+//    user_data       = base64encode("${aws_instance.akka_seed_node.private_ip}|${var.members}")
 //
 //    lifecycle {
 //        create_before_destroy = true

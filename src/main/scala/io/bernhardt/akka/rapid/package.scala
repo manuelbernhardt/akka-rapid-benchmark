@@ -8,11 +8,6 @@ import awscala.ec2.EC2
 
 package object rapid {
 
-  def waitUntilNextMinute(): Unit = {
-    val nextMinute = Instant.now().plus(1, ChronoUnit.MINUTES).truncatedTo(ChronoUnit.MINUTES)
-    Thread.sleep(nextMinute.toEpochMilli - Instant.now().toEpochMilli)
-  }
-
   def shutdownMachine(): Unit = {
     import scala.sys.process._
     "shutdown -fh now".run()
