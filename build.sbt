@@ -38,7 +38,7 @@ mainClass in Compile := Some("io.bernhardt.akka.rapid.Main")
 maintainer := "manuel@bernhardt.io" // keep native packager from complaining
 
 // disable those in order for the local cluster to work
-bashScriptExtraDefines in IntegrationTest ++= Seq(
+bashScriptExtraDefines ++= Seq(
   "export USER_DATA=$(/opt/ec2-metadata | grep user-data | awk '{print $2}')",
   "export EC2_INSTANCE_TYPE=$(/opt/ec2-metadata | grep instance-type | awk '{print $2}')",
   "export HOSTNAME=$(/opt/ec2-metadata | grep local-ipv4 | awk '{print $2}')",
