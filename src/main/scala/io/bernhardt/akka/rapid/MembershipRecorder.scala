@@ -1,5 +1,7 @@
 package io.bernhardt.akka.rapid
 
+import java.io.File
+
 import akka.actor.{Actor, ActorLogging, Props, Timers}
 import akka.cluster.{Cluster, MemberStatus}
 
@@ -10,13 +12,19 @@ class MembershipRecorder(expectedCount: Int) extends Actor with Timers with Acto
 
   val cluster = Cluster(context.system)
 
-  timers.startTimerAtFixedRate(Tick, Tick, 5.seconds)
+  timers.startTimerAtFixedRate(Tick, Tick, 30.seconds)
+
+  var countWasReached = false
 
   override def receive: Receive = {
     case Tick =>
       val memberCount = cluster.state.members.count(_.status == MemberStatus.Up)
       if (memberCount >= expectedCount) {
         log.info(s"""{"memberCount": $memberCount, "reachedCount": true}""")
+        if (!countWasReached) {
+          new File(s"/tmp/akka-rapid-reached-size-${cluster.selfAddress.host.get}-${cluster.selfAddress.port.get}").createNewFile()
+        }
+        countWasReached = true
       } else {
         log.info(s"""{"memberCount": $memberCount}""")
       }
