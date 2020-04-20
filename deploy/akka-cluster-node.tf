@@ -110,7 +110,7 @@ resource "aws_ami_from_instance" "akka-template-ami" {
 
 resource "aws_instance" "akka_seed_node" {
     ami = aws_ami_from_instance.akka-template-ami.id
-    instance_type = "c5.2xlarge"
+    instance_type = "m5.8xlarge"
     vpc_security_group_ids = [var.aws_security_group]
     key_name = var.key_name
 
