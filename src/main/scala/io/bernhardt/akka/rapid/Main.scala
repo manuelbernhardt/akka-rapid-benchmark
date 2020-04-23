@@ -27,6 +27,16 @@ object Main extends App {
        |""".stripMargin
   )
 
+  def largeNodeConfig = ConfigFactory.parseString(
+    s"""
+       |akka.remote.artery.advanced.buffer-pool-size = 512
+       |akka.remote.artery.advanced.large-buffer-pool-size = 1
+       |akka.remote.artery.advanced.outbound-large-message-queue-size = 1
+       |akka.remote.artery.advanced.outbound-message-queue-size = 1536
+       |akka.remote.artery.advanced.tcp.connection-timeout = 10 seconds
+       |""".stripMargin
+  )
+
   val hostname: String = sys.env("HOSTNAME")
 
   val port = if (args.length > 0) args(0) else "2552"
@@ -57,11 +67,13 @@ object Main extends App {
       case "SEED" =>
         import java.time.Duration
         logger.info("Starting as seed node, remoting port {}", port)
-        val config = seedNodeConfig(hostname).withFallback(remotingPortConfig(port).withFallback(ConfigFactory.load()))
-          .withValue("akka.cluster.roles", ConfigValueFactory.fromIterable(List("seed").asJava))
-          // batch all the joiner messages together in one message
-          .withValue("akka.cluster.rapid.batching-window", ConfigValueFactory.fromAnyRef(Duration.ofSeconds(2)))
-          .withValue("akka.remote.artery.advanced.outbound-message-queue-size", ConfigValueFactory.fromAnyRef(10000))
+        val config = seedNodeConfig(hostname)
+            .withFallback(remotingPortConfig(port)
+            .withFallback(largeNodeConfig)
+            .withFallback(ConfigFactory.load()))
+            .withValue("akka.cluster.roles", ConfigValueFactory.fromIterable(List("seed").asJava))
+            // batch all the joiner messages together in one message
+            .withValue("akka.cluster.rapid.batching-window", ConfigValueFactory.fromAnyRef(Duration.ofSeconds(2)))
         val system = ActorSystem(SystemName, config)
         logger.info("Seed node starting to listen for JVM registrations with {} broadcasters", expectedBroadcastersCount)
         new StartupCoordinationServer(hostname, expectedMemberCount, expectedBroadcastersCount)(system)
@@ -72,9 +84,10 @@ object Main extends App {
         None
       case host if isStartedAsBroadcaster =>
         logger.info("Starting broadcasting node with seed node configured at {}, remoting port {}", host, port)
-        val config = remotingPortConfig(port).withFallback(ConfigFactory.load())
+        val config = remotingPortConfig(port)
+          .withFallback(largeNodeConfig)
+          .withFallback(ConfigFactory.load())
           .withValue("akka.cluster.roles", ConfigValueFactory.fromIterable(List("broadcaster").asJava))
-          .withValue("akka.remote.artery.advanced.outbound-message-queue-size", ConfigValueFactory.fromAnyRef(10000))
         val system = ActorSystem(SystemName, config)
         new StartupClient(hostname, host, expectedMemberCount, isBroadcaster = true)(system)
         Some(system)
