@@ -45,6 +45,8 @@
     <!-- akka.remote.artery.AssociationRegistry now logs the amount of associations at INFO -->
     <logger name="scala.Tuple2" level="WARN"/>
 
+    <logger name="akka.cluster.rapid" level="INFO" />
+
     <!-- this is enhanced to log the latency percentiles at INFO -->
     <logger name="akka.cluster.rapid.RapidMembershipService" level="WARN" />
 
