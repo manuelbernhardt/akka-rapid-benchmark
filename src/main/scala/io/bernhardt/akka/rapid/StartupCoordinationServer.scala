@@ -118,7 +118,7 @@ class StartupCoordinator(expectedMemberCount: Int, broadcasterCount: Int) extend
   }
 
   private def handleRegister(host: String, isBroadcaster: Boolean): Unit = {
-    if (!hasStarted && registeredHosts.size > expectedJoiningCount + SpareHostsLimit || hasStarted && registeredHosts.size > SpareHostsLimit) {
+    if (!hasStarted && registeredHosts.size > expectedJoiningCount + SpareHostsLimit || hasStarted && registeredHosts.size >= SpareHostsLimit) {
       sender() ! GoAway
       log.debug("Surplus node {} registered, told to go away", host)
     } else {
@@ -195,9 +195,9 @@ class StartupCoordinator(expectedMemberCount: Int, broadcasterCount: Int) extend
         }
         if (joinedHosts.size == expectedJoiningCount) {
           log.info("REACHED TARGET SIZE of {}!!!!", joinedHosts.size + seedAndBroadcasters.size + 1)
-          log.info("Scheduling kill of 1% in 1 minute")
+          log.info("Scheduling kill of 1% in 2 minutes")
           timers.cancel(ProgressTick)
-          timers.startSingleTimer(KillOnePercent, KillOnePercent, 1.minute)
+          timers.startSingleTimer(KillOnePercent, KillOnePercent, 2.minutes)
         }
         log.debug("Host {} joined, total of {} joined hosts and {} joining", host, joinedHosts.size, joiningHosts.size)
       } else {
@@ -290,7 +290,7 @@ object StartupCoordinator {
   val SpareHostsLimit = 1500
 
 
-  val InitialBatchInterval = 15.seconds
+  val InitialBatchInterval = 25.seconds
   val InitialProgressTimeout = 45.seconds
 
   val ProgressCheckInterval = 5.seconds
