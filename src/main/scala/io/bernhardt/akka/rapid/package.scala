@@ -1,20 +1,20 @@
 package io.bernhardt.akka
 
-import java.time.Instant
-import java.time.temporal.ChronoUnit
-
 import awscala.Region
 import awscala.ec2.EC2
+
+import scala.sys.process._
 
 package object rapid {
 
   def shutdownMachineNow(): Unit = {
-    import scala.sys.process._
     "shutdown -fh now".run()
   }
   def shutdownMachineGracefully(): Unit = {
-    import scala.sys.process._
     "shutdown".run()
+  }
+  def partitionNow(): Unit = {
+    "tc qdisc add dev ens5 root netem loss 100%".!
   }
 
   lazy val ec2Api = for {

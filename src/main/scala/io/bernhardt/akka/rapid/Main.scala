@@ -72,10 +72,6 @@ object Main extends App {
             .withFallback(largeNodeConfig)
             .withFallback(ConfigFactory.load()))
             .withValue("akka.cluster.roles", ConfigValueFactory.fromIterable(List("seed").asJava))
-            // batch all the joiner messages together in one message in order to drastically reduce message load
-            // for the purpose of the scalability experiment we want to batch _all_ alerts in one message in order to avoid
-            // having different proposals floating in the network
-            .withValue("akka.cluster.rapid.batching-window", ConfigValueFactory.fromAnyRef(Duration.ofSeconds(5)))
         val system = ActorSystem(SystemName, config)
         logger.info("Seed node starting to listen for JVM registrations with {} broadcasters", expectedBroadcastersCount)
         new StartupCoordinationServer(hostname, expectedMemberCount, expectedBroadcastersCount)(system)

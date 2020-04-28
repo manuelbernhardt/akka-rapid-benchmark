@@ -2,7 +2,7 @@ package io.bernhardt.akka.rapid
 
 import java.util.concurrent.TimeUnit
 
-import akka.actor.{Actor, ActorLogging, ActorSystem, Props, RootActorPath, Timers}
+import akka.actor.{Actor, ActorLogging, ActorSystem, Props, Timers}
 import akka.cluster.{Cluster, ClusterEvent, MemberStatus}
 import akka.cluster.ClusterEvent.{MemberEvent, MemberUp}
 import akka.http.scaladsl.Http
@@ -96,8 +96,8 @@ class StartupCoordinator(expectedMemberCount: Int, broadcasterCount: Int) extend
       handleMemberUp(up)
     case ProgressTick =>
       handleProgressTick()
-    case KillOnePercent =>
-      handleKillOnePercent()
+    case KillTenPercent =>
+      handleKillTenPercent()
   }
 
   def waitingForJoiners: Receive = {
@@ -107,8 +107,8 @@ class StartupCoordinator(expectedMemberCount: Int, broadcasterCount: Int) extend
       handleMemberUp(up)
     case ProgressTick =>
       handleProgressTick()
-    case KillOnePercent =>
-      handleKillOnePercent()
+    case KillTenPercent =>
+      handleKillTenPercent()
   }
 
   override def unhandled(message: Any): Unit = message match {
@@ -195,9 +195,9 @@ class StartupCoordinator(expectedMemberCount: Int, broadcasterCount: Int) extend
         }
         if (joinedHosts.size == expectedJoiningCount) {
           log.info("REACHED TARGET SIZE of {}!!!!", joinedHosts.size + seedAndBroadcasters.size + 1)
-          log.info("Scheduling kill of 1% in 2 minutes")
+          log.info("Scheduling kill of 10% in 1 minute")
           timers.cancel(ProgressTick)
-          timers.startSingleTimer(KillOnePercent, KillOnePercent, 2.minutes)
+          timers.startSingleTimer(KillTenPercent, KillTenPercent, 1.minute)
         }
         log.debug("Host {} joined, total of {} joined hosts and {} joining", host, joinedHosts.size, joiningHosts.size)
       } else {
@@ -224,17 +224,17 @@ class StartupCoordinator(expectedMemberCount: Int, broadcasterCount: Int) extend
     }
   }
 
-  private def handleKillOnePercent(): Unit = {
-    val onePercent = expectedMemberCount / 100
+  private def handleKillTenPercent(): Unit = {
+    val tenPercent = math.ceil(expectedMemberCount.toDouble / 10).toInt
     val candidates = Cluster(context.system).state.members
       .filter(_.status == MemberStatus.Up)
       .filterNot(m => m.hasRole("seed") || m.hasRole("broadcaster"))
       .map(_.address)
-    val victims = Random.shuffle(candidates).take(onePercent)
-    log.info("Sending kill message to {} instances", onePercent)
+    val victims = Random.shuffle(candidates).take(tenPercent)
+    log.info("Sending partition message to {} instances", tenPercent)
     log.info(victims.map(_.host.get).mkString(" "))
     victims.foreach { victim =>
-      sendRequest(victim.host.get, "leave")
+      sendRequest(victim.host.get, "partition")
     }
   }
 
@@ -281,13 +281,13 @@ object StartupCoordinator {
   final case object NextBatch
   final case object ProgressTick
 
-  final case object KillOnePercent
+  final case object KillTenPercent
 
   final case object StopAll
 
-  val InitialBatchSize = 500
-  val IncrementalBatchSize = 500
-  val SpareHostsLimit = 1500
+  val InitialBatchSize = 400
+  val IncrementalBatchSize = 0
+  val SpareHostsLimit = 0
 
 
   val InitialBatchInterval = 25.seconds

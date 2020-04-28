@@ -1,5 +1,9 @@
 package io.bernhardt.akka.rapid
 
+import java.time.Instant
+import java.time.temporal.ChronoUnit
+import java.util.concurrent.TimeUnit
+
 import akka.actor.{Actor, ActorLogging, ActorSystem, Address, Props, Timers}
 import akka.cluster.Cluster
 import akka.http.scaladsl.Http
@@ -27,6 +31,12 @@ class StartupClient(selfHostName: String, seedHostName: String, expectedMemberCo
     path("leave") {
       post {
         shutdownMachineNow()
+        complete(OK)
+      }
+    },
+    path("partition") {
+      post {
+        partitionNow()
         complete(OK)
       }
     },
@@ -84,14 +94,18 @@ class StartupCoordinationClient(selfHostName: String, seedHostname: String, expe
   def waiting: Receive = {
     case Ready =>
       if (!hasStarted) {
-        val cluster = Cluster(context.system)
-        cluster.join(Address(cluster.selfAddress.protocol, cluster.selfAddress.system, seedHostname, 2552))
-        context.actorOf(MembershipRecorder.props(expectedMemberCount), "recorder")
-        context.actorOf(ActionListener.props(disableSafetyStop = isBroadcaster), "listener")
-        hasStarted = true
-        log.info("==== Akka Node {} started", cluster.selfAddress.toString)
-        context.become(ready)
+        val nextMinute = Instant.now().plus(1, ChronoUnit.MINUTES).truncatedTo(ChronoUnit.MINUTES)
+        val duration = nextMinute.toEpochMilli - Instant.now().toEpochMilli
+        timers.startSingleTimer(Start, Start, FiniteDuration(duration, TimeUnit.MILLISECONDS))
       }
+    case Start =>
+      val cluster = Cluster(context.system)
+      cluster.join(Address(cluster.selfAddress.protocol, cluster.selfAddress.system, seedHostname, 2552))
+      context.actorOf(MembershipRecorder.props(expectedMemberCount), "recorder")
+      context.actorOf(ActionListener.props(disableSafetyStop = isBroadcaster), "listener")
+      hasStarted = true
+      log.info("==== Akka Node {} started", cluster.selfAddress.toString)
+      context.become(ready)
     case LeaveGracefully =>
       // huh? looks like we have missed becoming ready in the first place
       log.error("receiving leave during waiting... acting as if ready")
@@ -132,6 +146,7 @@ object StartupCoordinationClient {
 
   case object Register
   case object Ready
+  case object Start
   case object LeaveGracefully
 
   protected case object Registered

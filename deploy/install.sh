@@ -39,6 +39,7 @@ sudo apt-get install -y chrony
 sudo apt-get install -y wget
 sudo apt-get install -y monit
 sudo apt-get install -y jq
+sudo apt-get install -y iproute2
 
 curl -L -O https://artifacts.elastic.co/downloads/beats/filebeat/filebeat-7.6.0-amd64.deb
 sudo dpkg -i filebeat-7.6.0-amd64.deb

@@ -12,7 +12,7 @@ class MembershipRecorder(expectedCount: Int) extends Actor with Timers with Acto
 
   val cluster = Cluster(context.system)
 
-  timers.startTimerAtFixedRate(Tick, Tick, 5.seconds)
+  timers.startTimerAtFixedRate(Tick, Tick, 500.millis)
 
   var countWasReached = false
 
