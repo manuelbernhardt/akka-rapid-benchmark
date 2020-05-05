@@ -1,0 +1,49 @@
+{
+
+  $schema: "https://vega.github.io/schema/vega-lite/v2.json"
+
+  mark: {
+    type: point
+  }
+  
+
+  
+  data: {
+
+    url: {
+
+      %context%: true
+
+      %timefield%: @timestamp
+
+      index: filebeat-*
+
+      body: {
+        size: 10000,
+
+        _source: ['@timestamp', 'memberCount']
+      }
+    }
+
+    format: { property: "hits.hits" }
+  }
+
+  transform: [
+    {
+      calculate: "toDate(datum._source['@timestamp'])"
+      as: "time"
+    }
+  ]
+  encoding: {
+    x: {
+      field: time
+      type: temporal
+      axis: { title: false }
+    }
+    y: {
+      field: _source.memberCount
+      type: quantitative
+      axis: { title: "Number of members" }
+    }
+  }
+}
