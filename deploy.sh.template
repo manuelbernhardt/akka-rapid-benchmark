@@ -1,0 +1,20 @@
+#!/bin/bash
+
+rm -rf target
+sbt universal:packageBin
+cd deploy
+export TF_VAR_servers=$1
+export TF_VAR_members=$1
+export TF_VAR_broadcasters=$2
+export TF_VAR_region=us-east-1
+export TF_VAR_key_name=akka
+export TF_VAR_key_path=/path/to/akka.pem
+export TF_VAR_aws_security_group=
+export TF_VAR_subnet_id_1=
+export TF_VAR_subnet_id_2=
+export TF_VAR_subnet_id_3=
+export TF_VAR_elastic_cloudid=
+export TF_VAR_elastic_kibana=
+export TF_VAR_elastic_cloudauth=
+
+terraform apply -parallelism=500 -auto-approve
