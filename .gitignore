@@ -3,4 +3,5 @@ target/
 .idea
 *tfstate*
 .terraform
+.terraform.lock.hcl
 filebeat.yml
