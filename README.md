@@ -1,7 +1,7 @@
 # Akka Rapid Benchmark
 
 This benchmark environment allows to deploy Akka Clusters of arbitrary size.
-It has been used successfully in order to bootstrap a 10,000 node cluster as [described in this article](https://manuel.bernhardt.io/2020/04/29/10000-node-cluster-with-akka-and-rapid/).
+It has been used successfully in order to bootstrap a 10,000 node cluster as [described in this article](https://manuel.bernhardt.io/2020/04/30/10000-node-cluster-with-akka-and-rapid/).
 
 ![10000 nodes](results/10000.jpg)
 
